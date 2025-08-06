@@ -1,4 +1,5 @@
 import { $ } from "./dom.js";
+console.log("working");
 
 class GoogleTranslator {
   // static es para guardar constantes que no cambian
@@ -35,6 +36,7 @@ class GoogleTranslator {
     this.currentTranslator = null;
     this.currentDetector = null;
     this.translationTimeout = null;
+    this.currentTranslatorKey = null;
   }
 
   init() {
@@ -75,6 +77,7 @@ class GoogleTranslator {
     //eventos al escribir en el input
     this.inputText.addEventListener("input", () => {
       this.debounceTranslate();
+
       //calcular el length del texto
       //traducir el texto con un debounce
     });
@@ -95,18 +98,35 @@ class GoogleTranslator {
     }, 500);
   }
 
+  updateDetectedLanguage(detectedLanguage) {
+    const option = this.sourceLanguage.querySelector(
+      `option[value="${detectedLanguage}"]`
+    );
+
+    if (option) {
+      const autoOption =
+        this.sourceLanguage.querySelector(`option[value="auto"]`);
+      autoOption.textContent = `Detectar idioma (${option.textContent})`;
+    }
+  }
+
   async getTranslation(text) {
-    const sourceLanguage = this.sourceLanguage.value;
+    const sourceLanguage =
+      this.sourceLanguage.value === "auto"
+        ? await this.detectLanguage(text)
+        : this.sourceLanguage.value;
+
     const targetLanguage = this.targetLanguage.value;
 
     if (sourceLanguage === targetLanguage) return text;
 
-    //revisando si tenemos disponibilidad de lenguajes para hacer la traduccion
+    //checking availability of languanges for translation.
     try {
       const status = await window.Translator.availability({
         sourceLanguage,
         targetLanguage,
       });
+
       if (status === "unavailable") {
         throw new Error(
           `Traduccion de ${sourceLanguage} a ${targetLanguage} no disponible`
@@ -118,6 +138,37 @@ class GoogleTranslator {
         `Traducción de ${sourceLanguage} a ${targetLanguage} no disponible`
       );
     }
+
+    const translatorKey = `${sourceLanguage}-${targetLanguage}`;
+
+    try {
+      if (
+        !this.currentTranslator ||
+        this.currentTranslatorKey !== translatorKey
+      ) {
+        //window.Translator.create creates a new Translator instance that can be used to translate text
+        this.currentTranslator = await window.Translator.create({
+          sourceLanguage,
+          targetLanguage,
+          //monitor download progress;
+          monitor: (monitor) => {
+            monitor.addEventListener("downloadprogress", (e) => {
+              this.outputText.innerHTML = `<span class="loading">Descangando modelo: ${Math.floor(
+                e.loaded * 100
+              )}%</span>`;
+            });
+          },
+        });
+      }
+
+      this.currentTranslatorKey = translatorKey;
+
+      const translation = await this.currentTranslator.translate(text);
+      return translation;
+    } catch (error) {
+      console.error(error);
+      return "Error al traducir";
+    }
   }
 
   async translate() {
@@ -128,16 +179,67 @@ class GoogleTranslator {
     }
 
     this.outputText.textContent = "Traduciendo...";
+
+    if (this.sourceLanguage.value === "auto") {
+      const detectedLanguage = await this.detectLanguage();
+      this.updateDetectedLanguage(detectedLanguage);
+    }
+
     try {
-      const translation = await this.getTranslation();
+      const translation = await this.getTranslation(text);
       this.outputText.textContent = translation;
     } catch (error) {
       console.error(error);
+      const hasSuport = this.checkAPISupport();
+      if (!hasSuport) {
+        this.outputText.textContent =
+          "¡Error! No tienes soporte a la API de traducción con IA";
+      }
+
       this.outputText.textContent = "Error al traducir";
     }
   }
-  swapLanguages() {}
+  async swapLanguages() {
+    if (this.sourceLanguage.value === "auto") {
+      const detectedLanguage = await this.detectLanguage(this.inputText.vaue);
+      this.sourceLanguage.value = detectedLanguage;
+    }
+    //change select value
+    const temporalLanguage = this.sourceLanguage.value;
+    this.sourceLanguage.value = this.targetLanguage.value;
+    this.targetLanguage.value = temporalLanguage;
+
+    //interchange texts
+    this.inputText.value = this.outputText.value;
+    this.outputText.value = "";
+
+    if (this.inputText.value.trim()) {
+      this.translate();
+      //calling again the function to control the translation after the swap
+    }
+  }
+
+  async detectLanguage(text) {
+    try {
+      if (!this.currentDetector) {
+        this.currentDetector = await window.LanguageDetector.create({
+          expectedInputLanguages: GoogleTranslator.SUPPORTED_LANGUAGES,
+        });
+      }
+      const results = await this.currentDetector.detect(text);
+      //this gives you a list of detected languages and his confidence porcents
+
+      const detectedLanguage = results[0]?.detectedLanguage;
+
+      //if it is undefined we provide the default language
+      return detectedLanguage === "und"
+        ? GoogleTranslator.DEFAULT_SOURCE_LANGUAGE
+        : detectedLanguage;
+    } catch (error) {
+      console.error("No he podido averiguar el idioma");
+      return GoogleTranslator.DEFAULT_SOURCE_LANGUAGE;
+    }
+  }
 }
 
 const googleTranslator = new GoogleTranslator();
-//De aquí llamo al constructor
