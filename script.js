@@ -48,6 +48,10 @@ class GoogleTranslator {
     this.micButton = $("#micButton");
     this.copyButton = $("#copyButton");
     this.speakerButton = $("#speakerButton");
+    this.limit = $("#length");
+    this.lengthLimit = $("#length-limit");
+
+    this.textCopy = $("#copyText");
 
     //initial configuration
     this.targetLanguage.value = GoogleTranslator.DEFAULT_TARGET_LANGUAGE;
@@ -73,6 +77,13 @@ class GoogleTranslator {
   setupEventListeners() {
     this.inputText.addEventListener("input", () => {
       this.debounceTranslate();
+      this.limit.textContent = this.inputText.value.length;
+      if (this.inputText.value.length >= 50) {
+        this.lengthLimit.style.color = "red";
+        return;
+      } else {
+        this.lengthLimit.style.color = "black";
+      }
       //TODO:
       //calcular el length del texto
     });
@@ -90,6 +101,16 @@ class GoogleTranslator {
 
     this.speakerButton.addEventListener("click", () => {
       this.speakRecognition();
+    });
+
+    this.copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(this.outputText.textContent);
+        this.textCopy.innerHTML += "!Copiado!";
+        setTimeout(() => (this.textCopy.textContent = " "), 1000);
+      } catch (error) {
+        console.error(error);
+      }
     });
   }
 
@@ -156,6 +177,7 @@ class GoogleTranslator {
           //monitor download progress;
           monitor: (monitor) => {
             monitor.addEventListener("downloadprogress", (e) => {
+              console.log("descargando---");
               this.outputText.innerHTML = `<span class="loading">Descangando modelo: ${Math.floor(
                 e.loaded * 100
               )}%</span>`;
@@ -175,6 +197,7 @@ class GoogleTranslator {
   }
 
   async translate() {
+    if (this.inputText.value.length > 50) return;
     const text = this.inputText.value.trim();
     if (!text) {
       this.outputText.textContent = "";
