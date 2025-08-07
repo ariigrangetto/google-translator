@@ -220,3 +220,11 @@ select {
 .output-controls {
   background-color: var(--bg-secondary);
 }
+
+.length-limit {
+  font-size: 10px;
+}
+
+#copyText {
+  font-size: 15px;
+}
